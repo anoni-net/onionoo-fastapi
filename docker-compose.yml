@@ -6,6 +6,11 @@ services:
       - "${HOST_PORT:-8000}:8000"
     environment:
       ONIONOO_BASE_URL: "https://onionoo.torproject.org"
+      LOG_FORMAT: "${LOG_FORMAT:-json}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      METRICS_ENABLED: "${METRICS_ENABLED:-true}"
+      RATE_LIMIT_ENABLED: "${RATE_LIMIT_ENABLED:-false}"
+      RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-120}"
     restart: unless-stopped
     healthcheck:
       test:
@@ -18,4 +23,28 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-
+# ---------------------------------------------------------------------------
+# Optional Caddy reverse proxy for production TLS. Uncomment + set DOMAIN
+# (and remove the host port mapping above) to terminate HTTPS in front of the
+# app. Caddy provisions and renews Let's Encrypt certs automatically.
+# ---------------------------------------------------------------------------
+#  caddy:
+#    image: caddy:2-alpine
+#    ports:
+#      - "80:80"
+#      - "443:443"
+#    environment:
+#      DOMAIN: "${DOMAIN:?DOMAIN must be set, e.g. onionoo.example.com}"
+#    command: >
+#      caddy reverse-proxy --from ${DOMAIN} --to onionoo-fastapi:8000
+#    depends_on:
+#      onionoo-fastapi:
+#        condition: service_healthy
+#    volumes:
+#      - caddy_data:/data
+#      - caddy_config:/config
+#    restart: unless-stopped
+#
+# volumes:
+#   caddy_data:
+#   caddy_config:

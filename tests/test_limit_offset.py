@@ -1,64 +1,58 @@
-"""Test that limit and offset parameters work correctly."""
-import pytest
+"""Verify that limit/offset query parameters are forwarded to upstream and
+that the semantic /v1/summary response surfaces the upstream relays."""
+
+from __future__ import annotations
+
+import httpx
+import respx
 from fastapi.testclient import TestClient
 
-from app.main import app
+from tests.conftest import make_summary_envelope, relay
 
 
-@pytest.fixture
-def client() -> TestClient:
-    """Use context manager so lifespan runs and app.state.onionoo is set."""
-    with TestClient(app) as c:
-        yield c
+def test_limit_returns_requested_count(
+    app_client: TestClient, respx_mock: respx.MockRouter
+) -> None:
+    """limit=5 results in 5 relays being returned to the caller."""
+    relays = [relay(n=f"relay{i:02d}", f=f"{i:040x}") for i in range(5)]
+    respx_mock.get("/summary").mock(
+        return_value=httpx.Response(200, json=make_summary_envelope(relays=relays))
+    )
 
-
-def test_limit_returns_requested_count(client: TestClient) -> None:
-    """limit=N should return N relays."""
-    r = client.get("/v1/summary", params={"type": "relay", "limit": 5})
+    r = app_client.get("/v1/summary", params={"type": "relay", "limit": 5})
     r.raise_for_status()
-    data = r.json()
-    relays = data.get("relays", [])
-    assert len(relays) == 5, f"Expected 5 relays, got {len(relays)}"
+    body = r.json()
+    assert len(body["relays"]) == 5
+    assert body["relays"][0]["nickname"] == "relay00"
 
 
-def test_offset_skips_relays(client: TestClient) -> None:
-    """offset=N should return relays starting after the first N."""
-    r1 = client.get("/v1/summary", params={"type": "relay", "limit": 5})
-    r1.raise_for_status()
-    relays1 = r1.json().get("relays", [])
-
-    r2 = client.get(
-        "/v1/summary", params={"type": "relay", "limit": 5, "offset": 5}
+def test_offset_is_forwarded_to_upstream(
+    app_client: TestClient, respx_mock: respx.MockRouter
+) -> None:
+    """offset=5 should appear in the outbound request to upstream."""
+    route = respx_mock.get("/summary").mock(
+        return_value=httpx.Response(200, json=make_summary_envelope(relays=[]))
     )
-    r2.raise_for_status()
-    relays2 = r2.json().get("relays", [])
 
-    fp1 = relays1[0].get("fingerprint") or relays1[0].get("f")
-    fp2 = relays2[0].get("fingerprint") or relays2[0].get("f")
-    assert fp1 != fp2, f"offset should skip relays; both batches started with {fp1}"
+    app_client.get("/v1/summary", params={"type": "relay", "limit": 5, "offset": 5})
+
+    assert route.called
+    sent = route.calls.last.request
+    assert sent.url.params["offset"] == "5"
+    assert sent.url.params["limit"] == "5"
+    assert sent.url.params["type"] == "relay"
 
 
-def test_offset_matches_slice_of_full_fetch(client: TestClient) -> None:
-    """offset=5 batch should match indices 5-9 of a limit=10 fetch."""
-    r_full = client.get(
-        "/v1/summary", params={"type": "relay", "limit": 10, "offset": 0}
+def test_semantic_keys_are_remapped(app_client: TestClient, respx_mock: respx.MockRouter) -> None:
+    """Upstream short keys n/f/a/r get mapped to nickname/fingerprint/addresses/running."""
+    relays = [relay(n="moria1", f="9695DFC35FFEB861329B9F1AB04C46397020CE31")]
+    respx_mock.get("/summary").mock(
+        return_value=httpx.Response(200, json=make_summary_envelope(relays=relays))
     )
-    r_full.raise_for_status()
-    full_relays = r_full.json().get("relays", [])
 
-    r_offset = client.get(
-        "/v1/summary", params={"type": "relay", "limit": 5, "offset": 5}
-    )
-    r_offset.raise_for_status()
-    offset_relays = r_offset.json().get("relays", [])
-
-    expected_fps = [
-        r.get("fingerprint") or r.get("f") for r in full_relays[5:10]
-    ]
-    actual_fps = [
-        r.get("fingerprint") or r.get("f") for r in offset_relays
-    ]
-    assert expected_fps == actual_fps, (
-        f"offset=5 batch should match indices 5-9 of full fetch. "
-        f"Expected {expected_fps}, got {actual_fps}"
-    )
+    body = app_client.get("/v1/summary", params={"limit": 1}).json()
+    item = body["relays"][0]
+    assert item["nickname"] == "moria1"
+    assert item["fingerprint"] == "9695DFC35FFEB861329B9F1AB04C46397020CE31"
+    assert item["running"] is True
+    assert isinstance(item["addresses"], list)

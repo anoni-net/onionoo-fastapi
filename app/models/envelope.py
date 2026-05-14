@@ -8,6 +8,23 @@ RelayT = TypeVar("RelayT")
 BridgeT = TypeVar("BridgeT")
 
 
+class MetaInfo(BaseModel):
+    """Proxy-injected metadata about a response. Not present on raw passthrough."""
+
+    model_config = ConfigDict(extra="allow")
+
+    cache_age_seconds: float = Field(
+        description=(
+            "Age in seconds of the cached upstream payload that produced this "
+            "response. 0.0 means freshly fetched from Onionoo."
+        )
+    )
+    upstream_last_modified: str | None = Field(
+        default=None,
+        description="Last-Modified header value reported by Onionoo for this payload.",
+    )
+
+
 class OnionooEnvelope(BaseModel, Generic[RelayT, BridgeT]):
     """
     Onionoo responses share a common envelope across all methods.
@@ -16,6 +33,15 @@ class OnionooEnvelope(BaseModel, Generic[RelayT, BridgeT]):
     """
 
     model_config = ConfigDict(extra="allow")
+
+    meta: MetaInfo | None = Field(
+        default=None,
+        alias="_meta",
+        description=(
+            "Proxy-injected metadata (cache age, upstream Last-Modified). "
+            "Absent when the response was returned via raw passthrough."
+        ),
+    )
 
     version: str = Field(description="Onionoo protocol version string (major.minor).")
     next_major_version_scheduled: str | None = Field(
