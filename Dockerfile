@@ -15,13 +15,18 @@ RUN apk add --no-cache ca-certificates curl \
 # Python-version-specific wheels on Alpine.
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Install dependencies first (better layer caching)
+# Install dependencies first (better layer caching). `--no-install-project`
+# avoids invoking the hatchling build backend at this step, so the layer
+# survives changes to app/ source.
 COPY pyproject.toml uv.lock /app/
-RUN /root/.local/bin/uv sync --frozen
+RUN /root/.local/bin/uv sync --frozen --no-install-project
 
-# Copy application code
+# Copy application code + metadata referenced by pyproject (license, readme),
+# then run sync again so the project itself is installed (this is what makes
+# the `onionoo-mcp` console script appear on PATH).
 COPY app /app/app
 COPY README.md LICENSE /app/
+RUN /root/.local/bin/uv sync --frozen
 
 # Non-root user (Alpine)
 RUN adduser -D -u 10001 appuser \
