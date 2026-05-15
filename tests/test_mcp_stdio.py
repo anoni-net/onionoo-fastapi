@@ -33,7 +33,7 @@ EXPECTED_TOOLS = {
 
 @pytest.mark.asyncio
 async def test_stdio_server_registers_expected_tools() -> None:
-    server = build_server()
+    server, client = build_server()
     try:
         tools = await server.list_tools()
         names = {t.name for t in tools}
@@ -41,7 +41,7 @@ async def test_stdio_server_registers_expected_tools() -> None:
         for t in tools:
             assert t.description and len(t.description) > 40
     finally:
-        await server._onionoo_client.aclose()
+        await client.aclose()
 
 
 @pytest.mark.asyncio
@@ -71,11 +71,11 @@ async def test_stdio_find_relay_routes_through_onionoo_client(
         )
     )
 
-    server = build_server()
+    server, client = build_server()
     try:
         result = await server.call_tool("find_relay", {"query": "moria"})
     finally:
-        await server._onionoo_client.aclose()
+        await client.aclose()
 
     # FastMCP returns a list of content blocks; the JSON payload is in `.text`.
     content, _ = result
@@ -102,11 +102,11 @@ async def test_stdio_onionoo_passthrough_returns_raw_body(
         )
     )
 
-    server = build_server()
+    server, client = build_server()
     try:
         result = await server.call_tool("onionoo_summary", {"params": {"limit": "1"}})
     finally:
-        await server._onionoo_client.aclose()
+        await client.aclose()
 
     content, _ = result
     payload = json.loads(content[0].text)

@@ -13,6 +13,7 @@ Public surface:
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import uuid
 from collections.abc import Awaitable, Callable
@@ -27,6 +28,12 @@ from starlette.responses import Response
 from app.settings import settings
 
 REQUEST_ID_HEADER = "X-Request-ID"
+
+# Client-supplied IDs are echoed back and logged, so we constrain them to a
+# safe shape: alphanumerics, underscore, hyphen, up to 128 chars. Anything
+# else (oversize headers, control chars, structured payloads attempting log
+# injection) is dropped and a UUIDv4 is substituted instead.
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 # Request-id is set by middleware and read by the structlog processor below.
 _request_id_var: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -114,7 +121,8 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        rid = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
+        inbound = request.headers.get(REQUEST_ID_HEADER)
+        rid = inbound if inbound and _REQUEST_ID_RE.fullmatch(inbound) else uuid.uuid4().hex
         token = _request_id_var.set(rid)
         structlog.contextvars.bind_contextvars(request_id=rid)
         try:

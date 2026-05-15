@@ -71,3 +71,51 @@ async def test_retry_exhaustion_raises_last_error(
 
     assert exc_info.value.status_code == 500
     assert route.call_count == 3  # 1 initial + 2 retries
+
+
+@pytest.mark.asyncio
+async def test_connect_error_is_retried(respx_mock: respx.MockRouter) -> None:
+    """Transport-level failures (ConnectError) are transient → retry."""
+    responses = iter(
+        [
+            httpx.ConnectError("network down"),
+            httpx.Response(200, json=make_summary_envelope()),
+        ]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:  # noqa: ARG001
+        nxt = next(responses)
+        if isinstance(nxt, Exception):
+            raise nxt
+        return nxt
+
+    route = respx_mock.get("/summary").mock(side_effect=handler)
+    client = OnionooClient()
+    try:
+        resp = await client.get(method="summary", params={"limit": "1"}, if_modified_since=None)
+    finally:
+        await client.aclose()
+
+    assert resp.status_code == 200
+    assert route.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_non_transient_httpx_error_is_not_retried(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """Deterministic client-side errors (e.g. TooManyRedirects) must not retry —
+    retrying just delays the same failure."""
+
+    def handler(request: httpx.Request) -> httpx.Response:  # noqa: ARG001
+        raise httpx.TooManyRedirects("loop detected")
+
+    route = respx_mock.get("/summary").mock(side_effect=handler)
+    client = OnionooClient()
+    try:
+        with pytest.raises(httpx.TooManyRedirects):
+            await client.get(method="summary", params={"limit": "1"}, if_modified_since=None)
+    finally:
+        await client.aclose()
+
+    assert route.call_count == 1

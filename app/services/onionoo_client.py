@@ -75,8 +75,21 @@ def _cache_key(method: str, params: Mapping[str, Any], if_modified_since: str | 
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+# Transient transport errors worth retrying. We deliberately exclude
+# `httpx.InvalidURL`, `httpx.UnsupportedProtocol`, `httpx.TooManyRedirects`, and
+# similar deterministic client-side failures — retrying those just delays the
+# inevitable.
+_RETRYABLE_HTTPX_ERRORS = (
+    httpx.ConnectError,
+    httpx.ReadTimeout,
+    httpx.WriteTimeout,
+    httpx.PoolTimeout,
+    httpx.RemoteProtocolError,
+)
+
+
 def _is_retryable_exception(exc: BaseException) -> bool:
-    if isinstance(exc, httpx.RequestError):
+    if isinstance(exc, _RETRYABLE_HTTPX_ERRORS):
         return True
     if isinstance(exc, UpstreamError) and exc.status_code >= 500:
         return True
@@ -146,7 +159,8 @@ class OnionooClient:
                 CACHE_HITS.inc()
                 cached_resp, inserted_at = cached
                 age = max(0.0, time.monotonic() - inserted_at)
-                # Return a shallow copy so concurrent callers don't trample each other's age.
+                # Each caller observes its own `cache_age_seconds`; the response
+                # body/headers are shared (treat them as immutable).
                 return UpstreamResponse(
                     status_code=cached_resp.status_code,
                     headers=cached_resp.headers,

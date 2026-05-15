@@ -40,11 +40,14 @@ you need raw Onionoo response shapes or filters that aren't covered above.
 """
 
 
-def build_server() -> FastMCP:
-    """Build (but do not run) the stdio MCP server, wired to a fresh OnionooClient."""
+def build_server() -> tuple[FastMCP, OnionooClient]:
+    """Build (but do not run) the stdio MCP server, wired to a fresh OnionooClient.
+
+    Returns the server alongside its client so the entry point can call
+    `client.aclose()` on shutdown without poking at private FastMCP state.
+    """
     server = FastMCP("onionoo-mcp", instructions=_INSTRUCTIONS)
     client = OnionooClient()
-    server._onionoo_client = client  # type: ignore[attr-defined]
 
     # --- High-level tools ----------------------------------------------------
 
@@ -114,13 +117,14 @@ def build_server() -> FastMCP:
         description=(
             "Group all running Tor relays by country, AS, or flag. Returns "
             "buckets sorted by relay count (desc) with totals for advertised "
-            "bandwidth and consensus weight. Use group_by='flag' to discover "
+            "bandwidth and consensus weight. Use group_by='flags' to discover "
             "which roles dominate (Guard/Exit/Fast) — note a relay can belong "
-            "to multiple flag buckets. Set top=N to keep only the largest N."
+            "to multiple flag buckets. Set top=N to keep only the largest N. "
+            "The label set matches the REST endpoints /v1/aggregate/{countries,as,flags}."
         ),
     )
     async def _aggregate_relays(
-        group_by: Literal["country", "as", "flag"],
+        group_by: Literal["countries", "as", "flags"],
         running: bool = True,
         top: int | None = None,
     ) -> dict[str, Any]:
@@ -166,15 +170,14 @@ def build_server() -> FastMCP:
         "Raw Onionoo /uptime: fractional uptime time series.",
     )
 
-    return server
+    return server, client
 
 
 async def _run_async() -> None:
-    server = build_server()
+    server, client = build_server()
     try:
         await server.run_stdio_async()
     finally:
-        client: OnionooClient = server._onionoo_client  # type: ignore[attr-defined]
         await client.aclose()
 
 

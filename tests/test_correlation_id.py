@@ -39,3 +39,27 @@ def test_request_id_is_generated_when_missing(app_client: TestClient) -> None:
     rid = r.headers["X-Request-ID"]
     assert len(rid) == 32
     assert all(c in "0123456789abcdef" for c in rid)
+
+
+def test_request_id_rejected_when_too_long(app_client: TestClient) -> None:
+    """Headers above the 128-char limit are dropped and a UUID is substituted."""
+    r = app_client.get("/healthz", headers={"X-Request-ID": "a" * 200})
+    assert r.status_code == 200
+    rid = r.headers["X-Request-ID"]
+    assert rid != "a" * 200
+    assert len(rid) == 32
+
+
+def test_request_id_rejected_when_contains_unsafe_chars(app_client: TestClient) -> None:
+    """Anything outside [A-Za-z0-9_-] is rejected — including spaces, control
+    characters, ANSI escapes, newlines used for log injection."""
+    payloads = [
+        "abc\n123",
+        "abc def",
+        "abc\x1b[31mred",
+        'abc"; DROP TABLE',
+    ]
+    for payload in payloads:
+        r = app_client.get("/healthz", headers={"X-Request-ID": payload})
+        assert r.status_code == 200
+        assert r.headers["X-Request-ID"] != payload, payload

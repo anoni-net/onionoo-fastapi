@@ -19,18 +19,11 @@ from app.services.aggregate import aggregate_details
 from app.services.onionoo_client import OnionooClient, UpstreamError
 
 FINGERPRINT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
-IPV4_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
-IPV6_HINT_RE = re.compile(r":")
 AS_RE = re.compile(r"^AS\d+$", re.IGNORECASE)
 
 
 def _looks_like_fingerprint(query: str) -> bool:
     return bool(FINGERPRINT_RE.match(query.strip()))
-
-
-def _looks_like_ip(query: str) -> bool:
-    q = query.strip()
-    return bool(IPV4_RE.match(q) or IPV6_HINT_RE.search(q))
 
 
 def _looks_like_as(query: str) -> bool:
@@ -249,16 +242,32 @@ async def country_summary(client: OnionooClient, country: str) -> dict[str, Any]
     }
 
 
+_AGGREGATE_GROUP_BY_ALIASES = {
+    "countries": "country",
+    "country": "country",
+    "as": "as",
+    "flags": "flag",
+    "flag": "flag",
+}
+
+
 async def aggregate_relays(
     client: OnionooClient,
     *,
-    group_by: Literal["country", "as", "flag"],
+    group_by: Literal["countries", "as", "flags"],
     running: bool = True,
     top: int | None = None,
 ) -> dict[str, Any]:
     """Group all running Tor relays by country / AS / flag.
 
-    Thin wrapper over `app.services.aggregate.aggregate_details` so the MCP tool
-    and the REST router share the same bucketing logic.
+    Thin wrapper over `app.services.aggregate.aggregate_details`. The public
+    label set (`countries`/`as`/`flags`) matches the REST endpoint paths
+    (`/v1/aggregate/{countries,as,flags}`); singular forms remain accepted for
+    backwards compatibility with the original tool signature.
     """
-    return await aggregate_details(client, group_by=group_by, running=running, limit=top)
+    internal = _AGGREGATE_GROUP_BY_ALIASES.get(group_by)
+    if internal is None:
+        raise ValueError(
+            f"group_by must be one of {sorted(_AGGREGATE_GROUP_BY_ALIASES)}, got {group_by!r}"
+        )
+    return await aggregate_details(client, group_by=internal, running=running, limit=top)
