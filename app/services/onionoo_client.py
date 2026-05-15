@@ -81,6 +81,8 @@ def _cache_key(method: str, params: Mapping[str, Any], if_modified_since: str | 
 # inevitable.
 _RETRYABLE_HTTPX_ERRORS = (
     httpx.ConnectError,
+    httpx.ReadError,
+    httpx.WriteError,
     httpx.ReadTimeout,
     httpx.WriteTimeout,
     httpx.PoolTimeout,

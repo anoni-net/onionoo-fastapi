@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-from typing import Generic, TypeVar
-
 from pydantic import BaseModel, ConfigDict, Field
-
-RelayT = TypeVar("RelayT")
-BridgeT = TypeVar("BridgeT")
 
 
 class MetaInfo(BaseModel):
@@ -25,7 +20,7 @@ class MetaInfo(BaseModel):
     )
 
 
-class OnionooEnvelope(BaseModel, Generic[RelayT, BridgeT]):
+class OnionooEnvelope[RelayT, BridgeT](BaseModel):
     """
     Onionoo responses share a common envelope across all methods.
 

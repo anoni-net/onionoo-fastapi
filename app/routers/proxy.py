@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 import json
-from typing import Any, TypeVar
+from typing import Any
 
 from fastapi import HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.services.onionoo_client import OnionooClient
 
-ModelT = TypeVar("ModelT", bound=BaseModel)
-
 
 def get_onionoo_client(request: Request) -> OnionooClient:
     return request.app.state.onionoo
 
 
-async def proxy_get_json(
+async def proxy_get_json[ModelT: BaseModel](
     *,
     method: str,
     model: type[ModelT],

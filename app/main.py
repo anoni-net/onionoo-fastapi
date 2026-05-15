@@ -6,8 +6,11 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from fastapi_mcp import FastApiMCP
 from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.observability import RequestIdMiddleware, configure_logging, logger
 from app.routers import aggregate, bandwidth, clients, details, summary, uptime, weights
@@ -49,36 +52,36 @@ def create_app() -> FastAPI:
         )
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+    # The limiter is always constructed so `@limiter.exempt` decorators on the
+    # health endpoints remain valid even when rate limiting is toggled off.
+    # SlowAPIMiddleware is what actually enforces `default_limits`; without it
+    # the limiter object is inert.
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=[f"{settings.rate_limit_per_minute}/minute"],
+    )
+    app.state.limiter = limiter
     if settings.rate_limit_enabled:
-        from slowapi import Limiter
-        from slowapi.errors import RateLimitExceeded
         from slowapi.middleware import SlowAPIMiddleware
-        from slowapi.util import get_remote_address
 
-        limiter = Limiter(
-            key_func=get_remote_address,
-            default_limits=[f"{settings.rate_limit_per_minute}/minute"],
-        )
-        app.state.limiter = limiter
-        # Middleware is what actually applies `default_limits` to every route;
-        # without it the limiter object is inert.
         app.add_middleware(SlowAPIMiddleware)
-
-        @app.exception_handler(RateLimitExceeded)
-        async def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> Response:
-            return JSONResponse(
-                status_code=429,
-                content={"error": "rate_limited", "detail": str(exc.detail)},
-            )
 
     if settings.metrics_enabled:
         Instrumentator().instrument(app).expose(app, endpoint="/metrics", tags=["health"])
+        # Prometheus scrapes shouldn't compete with end-user traffic for the
+        # per-IP rate budget. Mark the route exempt regardless of toggle.
+        for route in app.routes:
+            if isinstance(route, APIRoute) and route.path == "/metrics":
+                limiter.exempt(route.endpoint)
+                break
 
     @app.get("/healthz", tags=["health"], summary="Liveness probe (static)")
+    @limiter.exempt
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.get("/healthz/ready", tags=["health"], summary="Readiness probe (pings upstream)")
+    @limiter.exempt
     async def healthz_ready(request: Request) -> Response:
         cache = request.app.state.ready_cache
         now = monotonic()

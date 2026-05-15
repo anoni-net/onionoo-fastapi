@@ -47,3 +47,15 @@ def test_rate_limit_disabled_does_not_block(
     for _ in range(10):
         r = app_client.get("/v1/summary", params={"limit": 1})
         assert r.status_code == 200
+
+
+def test_rate_limit_exempts_health_and_metrics(rate_limited_client: TestClient) -> None:
+    """Health probes and Prometheus scrapes must not eat the per-IP budget.
+
+    Hammer the exempt paths well past the configured per-minute cap and verify
+    every response stays 200.
+    """
+    cap = 2
+    for path in ("/healthz", "/metrics"):
+        statuses = [rate_limited_client.get(path).status_code for _ in range(cap * 5)]
+        assert all(s == 200 for s in statuses), f"{path} statuses: {statuses}"

@@ -3,7 +3,7 @@ name = "onionoo-fastapi"
 version = "0.1.0"
 description = "FastAPI-based semantic/OpenAPI proxy for Tor Onionoo."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 license = { file = "LICENSE" }
 dependencies = [
   "cachetools>=5.3",
@@ -34,7 +34,7 @@ Issues = "https://github.com/anoni-net/onionoo-fastapi/issues"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

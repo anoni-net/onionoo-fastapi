@@ -47,12 +47,25 @@ jobs:
       # PR builds run amd64-only for smoke coverage; push/tag builds publish
       # the full multi-arch image. This keeps PR CI minutes reasonable.
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # On PRs the amd64 image is `load`-ed into the local Docker daemon, so
+      # we can boot it and verify imports + healthcheck before merging. Catches
+      # Python-version / dependency drift that wouldn't surface from `uv sync`.
+      - name: Smoke test image (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          IMAGE="$(echo '${{ steps.meta.outputs.tags }}' | head -n1)"
+          echo "Testing $IMAGE"
+          docker run --rm --entrypoint python "$IMAGE" -c \
+            "import app.main; assert app.main.app is not None; print('app import ok')"
