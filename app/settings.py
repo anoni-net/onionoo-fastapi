@@ -10,7 +10,11 @@ class Settings(BaseSettings):
     default_limit: int = 100
     max_limit: int = 200
 
-    cache_maxsize: int = 1024
+    # `/details` payloads can reach tens of MB once Onionoo's full corpus is
+    # parsed; with hundreds of entries the resident set can quickly run into the
+    # gigabytes. Keep the default conservative and let operators raise it for
+    # high-traffic deployments. Tune via CACHE_MAXSIZE.
+    cache_maxsize: int = 128
     cache_default_ttl_seconds: float = 300.0
     upstream_retry_attempts: int = 2
 
