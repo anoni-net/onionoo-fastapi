@@ -5,9 +5,10 @@ on:
     tags:
       - "v*"
 
+# Default permissions: read-only for the whole workflow. The publish job
+# escalates to `id-token: write` only when it actually needs OIDC.
 permissions:
   contents: read
-  id-token: write  # trusted publishing to PyPI
 
 jobs:
   build:
@@ -35,6 +36,9 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    # OIDC trusted-publishing token is scoped to this job only.
+    permissions:
+      id-token: write
     environment:
       name: pypi
       url: https://pypi.org/project/onionoo-fastapi/
