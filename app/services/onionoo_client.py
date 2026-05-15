@@ -37,6 +37,10 @@ class UpstreamError(RuntimeError):
         self.body = body
 
 
+class _OwnerCancelled(RuntimeError):
+    """Signal that a deduped owner was cancelled; waiters should re-issue."""
+
+
 @dataclass
 class UpstreamResponse:
     status_code: int
@@ -112,6 +116,21 @@ class OnionooClient:
     def cache_size(self) -> int:
         return len(self._cache)
 
+    async def ping(
+        self, *, method: str = "summary", params: Mapping[str, Any] | None = None
+    ) -> int:
+        """Probe upstream without consulting the cache.
+
+        Used by `/healthz/ready` so a cached payload can't mask an outage. Raises
+        `httpx.RequestError` on transport failures and `UpstreamError` on >=400.
+        Returns the upstream status code on success.
+        """
+        return (
+            await self._fetch_once(
+                method=method, params=params or {"limit": "1"}, if_modified_since=None
+            )
+        ).status_code
+
     async def get(
         self,
         *,
@@ -146,12 +165,29 @@ class OnionooClient:
                 CACHE_MISSES.inc()
 
         if not is_owner:
-            return await future
+            try:
+                return await future
+            except _OwnerCancelled:
+                # Owner was cancelled before completing; re-enter as a fresh
+                # caller. Whoever wins the race becomes the new owner.
+                return await self.get(
+                    method=method, params=params, if_modified_since=if_modified_since
+                )
 
         try:
             response = await self._fetch_with_retry(
                 method=method, params=params, if_modified_since=if_modified_since
             )
+        except asyncio.CancelledError:
+            # The owning request was cancelled (e.g. client disconnect). Drop the
+            # pending slot and signal waiters with a sentinel so they re-issue
+            # instead of inheriting our cancellation.
+            async with self._lock:
+                self._pending.pop(key, None)
+            if not future.done():
+                future.set_exception(_OwnerCancelled())
+                future.exception()
+            raise
         except BaseException as exc:
             if not future.done():
                 future.set_exception(exc)

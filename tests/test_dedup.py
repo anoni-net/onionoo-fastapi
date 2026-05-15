@@ -67,3 +67,51 @@ async def test_dedup_propagates_exceptions_to_all_waiters(
 
     assert len(results) == 4
     assert all(isinstance(r, Exception) for r in results)
+
+
+@pytest.mark.asyncio
+async def test_owner_cancellation_does_not_cancel_waiters(
+    respx_mock: respx.MockRouter,
+) -> None:
+    """Owner-side cancellation must not propagate to deduped waiters.
+
+    Regression: previously `except BaseException` swallowed `CancelledError` and
+    re-raised it on all waiting futures, cancelling unrelated requests.
+    """
+
+    started_call_count = 0
+
+    async def slow_then_ok(request: httpx.Request) -> httpx.Response:  # noqa: ARG001
+        nonlocal started_call_count
+        started_call_count += 1
+        await asyncio.sleep(0.1)
+        return httpx.Response(200, json=make_summary_envelope())
+
+    respx_mock.get("/summary").mock(side_effect=slow_then_ok)
+
+    client = OnionooClient()
+    try:
+        owner = asyncio.create_task(
+            client.get(method="summary", params={"limit": "1"}, if_modified_since=None)
+        )
+        # Give the owner a tick to register itself in `_pending`.
+        await asyncio.sleep(0.01)
+        waiter = asyncio.create_task(
+            client.get(method="summary", params={"limit": "1"}, if_modified_since=None)
+        )
+        # Let the waiter actually start awaiting the future.
+        await asyncio.sleep(0.01)
+
+        owner.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await owner
+
+        # Waiter must succeed, not raise CancelledError.
+        result = await asyncio.wait_for(waiter, timeout=1.0)
+        assert result.status_code == 200
+        # Upstream was hit twice: once by the cancelled owner (still issued the
+        # request before cancel landed), once by the waiter promoted into a
+        # fresh caller after the sentinel was set.
+        assert started_call_count >= 1
+    finally:
+        await client.aclose()

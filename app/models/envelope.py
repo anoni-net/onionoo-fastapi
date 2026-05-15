@@ -53,8 +53,13 @@ class OnionooEnvelope(BaseModel, Generic[RelayT, BridgeT]):
         description="Git revision of the Onionoo instance's software (if provided by upstream).",
     )
 
-    relays_published: str = Field(
-        description="UTC timestamp (YYYY-MM-DD hh:mm:ss) when the relay consensus started being valid."
+    relays_published: str | None = Field(
+        default=None,
+        description=(
+            "UTC timestamp (YYYY-MM-DD hh:mm:ss) when the relay consensus started being "
+            "valid. Optional because some upstream methods (bandwidth/weights/clients/"
+            "uptime) and trimmed `fields=` responses omit it."
+        ),
     )
     relays_skipped: int | None = Field(
         default=None, description="Number of relays skipped due to offset (if non-zero)."
@@ -64,8 +69,12 @@ class OnionooEnvelope(BaseModel, Generic[RelayT, BridgeT]):
     )
     relays: list[RelayT] = Field(default_factory=list, description="Relay objects.")
 
-    bridges_published: str = Field(
-        description="UTC timestamp (YYYY-MM-DD hh:mm:ss) when the bridge status was published."
+    bridges_published: str | None = Field(
+        default=None,
+        description=(
+            "UTC timestamp (YYYY-MM-DD hh:mm:ss) when the bridge status was published. "
+            "Optional for the same reasons as `relays_published`."
+        ),
     )
     bridges_skipped: int | None = Field(
         default=None, description="Number of bridges skipped due to offset (if non-zero)."

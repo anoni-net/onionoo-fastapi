@@ -52,6 +52,7 @@ def create_app() -> FastAPI:
     if settings.rate_limit_enabled:
         from slowapi import Limiter
         from slowapi.errors import RateLimitExceeded
+        from slowapi.middleware import SlowAPIMiddleware
         from slowapi.util import get_remote_address
 
         limiter = Limiter(
@@ -59,6 +60,9 @@ def create_app() -> FastAPI:
             default_limits=[f"{settings.rate_limit_per_minute}/minute"],
         )
         app.state.limiter = limiter
+        # Middleware is what actually applies `default_limits` to every route;
+        # without it the limiter object is inert.
+        app.add_middleware(SlowAPIMiddleware)
 
         @app.exception_handler(RateLimitExceeded)
         async def rate_limit_handler(_request: Request, exc: RateLimitExceeded) -> Response:
@@ -85,7 +89,8 @@ def create_app() -> FastAPI:
 
         client: OnionooClient = request.app.state.onionoo
         try:
-            await client.get(method="summary", params={"limit": "1"}, if_modified_since=None)
+            # Bypass the response cache: a cached 200 can mask a live outage.
+            await client.ping()
             cache["ok"] = True
             cache["detail"] = "upstream reachable"
         except (UpstreamError, httpx.RequestError) as exc:
