@@ -179,6 +179,30 @@ Observability / production hardening:
 - `RATE_LIMIT_PER_MINUTE` (default: `120`)
 - `HEALTHZ_READY_CACHE_SECONDS` (default: `30`)
 
+### Resource sizing
+
+A single-worker container (the default `uvicorn` CMD in the Dockerfile) measured on Alpine 3.23 / Python 3.14 / aarch64 against the real Onionoo upstream:
+
+| Phase | RSS | Notes |
+|---|---:|---|
+| **Idle** (just after start) | ~75 MiB | Python + FastAPI + Pydantic + httpx + fastapi-mcp + structlog + Prometheus instrumentator loaded; cache empty. |
+| **Typical agent traffic** | ~90 MiB | After ~15 mixed `/v1/*` calls (details + aggregates), only a handful of distinct upstream payloads cached. |
+| **Cache near saturation** | ~180 MiB | After 200 distinct `/v1/details` queries with `fields=` projection; cache holds ~200 entries. |
+
+From these measurements, each cached entry costs **~0.5 MiB on average** when callers use the `fields=` projection. With the default `CACHE_MAXSIZE=1024` that yields a **~500 MiB upper bound** under realistic agent traffic.
+
+If you expect callers to hit `/v1/details` **without** `fields=`, a single response can be several MiB (Onionoo returns ~10k full relay objects). A fully saturated cache of unfiltered details would then sit in the **1–5 GiB** range — bound it by tuning `CACHE_MAXSIZE` down.
+
+Suggested memory limits for `docker run --memory` / Kubernetes requests:
+
+| Deployment shape | Memory request | Memory limit |
+|---|---:|---:|
+| Personal / single-agent test | 128 MiB | 256 MiB |
+| Hosted instance, mostly cached requests | 256 MiB | 512 MiB |
+| Public instance, agents may issue unfiltered `/details` | 512 MiB | 1–2 GiB |
+
+CPU is light — a single worker handles 10s of QPS comfortably; scale with replicas if you need more throughput. (`uvicorn ... --workers N` is also an option, but each worker keeps its own in-memory cache; horizontal scaling via separate containers is usually a better fit.)
+
 ### Health checks
 
 - `GET /healthz` — static liveness probe, never hits upstream.
