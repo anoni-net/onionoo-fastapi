@@ -34,7 +34,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Onionoo FastAPI Proxy",
-        version="0.1.0",
+        version="1.0.0",
         description="Semantic/OpenAPI proxy for Tor Onionoo (data is fetched from Onionoo upstream).",
         lifespan=lifespan,
     )
