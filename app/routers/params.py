@@ -153,7 +153,7 @@ def common_query_params(
                 f"Default: {settings.default_limit}, max: {settings.max_limit}."
             ),
         ),
-    ] = settings.default_limit
+    ] = settings.default_limit,
 ) -> dict[str, Any]:
     """
     Common Onionoo query parameters (documented in Onionoo spec).
@@ -205,3 +205,20 @@ def common_query_params(
         params["offset"] = str(offset)
     params["limit"] = str(limit)
     return params
+
+
+def fields_query(
+    fields: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Comma-separated list of fields to include in the response. Useful "
+                "for trimming large payloads (e.g. `fields=nickname,fingerprint`). "
+                "On `/summary` and `/details` this filters top-level relay/bridge "
+                "attributes. On history endpoints (bandwidth/weights/clients/uptime) "
+                "Onionoo applies it where supported and otherwise ignores it."
+            ),
+        ),
+    ] = None,
+) -> str | None:
+    return fields
