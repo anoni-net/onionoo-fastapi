@@ -19,6 +19,7 @@ from app.mcp_tools import (
     top_relays_by_bandwidth,
 )
 from app.services.onionoo_client import OnionooClient
+from app.settings import settings
 
 FP_MORIA1 = "9695DFC35FFEB861329B9F1AB04C46397020CE31"
 FP_OTHER = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -276,6 +277,10 @@ async def test_country_summary_aggregates(
     sent = route.calls.last.request
     assert sent.url.params["country"] == "us"
     assert sent.url.params["running"] == "true"
+    # Must request the full country in one pass, not a hardcoded 200 that truncates
+    # large countries (e.g. US has thousands of relays).
+    assert sent.url.params["limit"] == str(settings.max_limit)
+    assert int(sent.url.params["limit"]) >= 10000
 
     assert result["country"] == "us"
     assert result["running_relay_count"] == 2

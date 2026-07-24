@@ -17,6 +17,7 @@ from typing import Any, Literal
 
 from app.services.aggregate import aggregate_details
 from app.services.onionoo_client import OnionooClient, UpstreamError
+from app.settings import settings
 
 FINGERPRINT_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 AS_RE = re.compile(r"^AS\d+$", re.IGNORECASE)
@@ -216,7 +217,10 @@ async def country_summary(client: OnionooClient, country: str) -> dict[str, Any]
     params = {
         "country": country_code,
         "running": "true",
-        "limit": "200",
+        # A single country can hold thousands of relays (e.g. US ~3000+); a hardcoded
+        # cap of 200 silently under-counted large countries. Fetch up to MAX_LIMIT so
+        # the aggregate reflects the whole country in one pass (fields= keeps it cheap).
+        "limit": str(settings.max_limit),
         "fields": "fingerprint,nickname,flags,advertised_bandwidth,consensus_weight",
     }
     resp = await client.get(method="details", params=params, if_modified_since=None)

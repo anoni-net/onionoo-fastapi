@@ -22,7 +22,10 @@ def common_query_params(
     running: Annotated[
         bool | None,
         Query(
-            description="Return only running relays/bridges (true) or only non-running (false).",
+            description=(
+                "Return only running relays/bridges (true) or only non-running (false). "
+                'Pass a JSON boolean (true/false), not the string "true".'
+            ),
         ),
     ] = None,
     search: Annotated[
@@ -141,7 +144,15 @@ def common_query_params(
     ] = None,
     offset: Annotated[
         int | None,
-        Query(ge=0, description="Skip the given number of relays/bridges (relays first)."),
+        Query(
+            ge=0,
+            description=(
+                "Skip the given number of relays/bridges (relays first). Onionoo's default "
+                "ordering is not stable across requests, so paging with offset alone can skip "
+                "entries. Pass an explicit `order`, or fetch everything in one request with a "
+                "high `limit`, when you need the complete set."
+            ),
+        ),
     ] = None,
     limit: Annotated[
         int,

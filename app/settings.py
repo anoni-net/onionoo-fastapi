@@ -8,7 +8,12 @@ class Settings(BaseSettings):
     onionoo_timeout_seconds: float = 30.0
     user_agent: str = "onionoo-fastapi/0.1 (+https://github.com/anoni-net/onionoo-fastapi)"
     default_limit: int = 100
-    max_limit: int = 200
+    # Onionoo has no server-side result cap; a single `/details` request can return
+    # the whole corpus (~10k relays + ~2.5k bridges). Keep the ceiling high enough
+    # to retrieve everything in one call — combined with `fields=` to trim payload,
+    # this avoids offset pagination, which drifts because Onionoo's default ordering
+    # is not stable across requests. Operators can tune via MAX_LIMIT.
+    max_limit: int = 20000
 
     # `/details` payloads can reach tens of MB once Onionoo's full corpus is
     # parsed; with hundreds of entries the resident set can quickly run into the

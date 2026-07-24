@@ -22,8 +22,14 @@ router = APIRouter()
         "Use this when the user wants to inspect a specific relay, or filter relays by "
         "country/AS/flags/version. To save tokens, pass `fields=...` (comma-separated) to "
         "limit which top-level fields are returned.\n\n"
+        "To retrieve the whole network in one shot, set a high `limit` (e.g. 20000) plus "
+        "`fields=...` and read the single response. Prefer this over walking `offset`: "
+        "Onionoo's default ordering is not stable across requests, so offset pagination "
+        "can skip relays. If you must paginate, pass an explicit `order` (e.g. "
+        "`-consensus_weight`) to keep pages consistent.\n\n"
         "Common params: `search`, `lookup` (40-hex fp), `country`, `as` (e.g. AS1234), "
-        "`flag` (e.g. Exit, Guard, Fast), `running`, `version`, `limit`, `offset`, `fields`.\n\n"
+        "`flag` (e.g. Exit, Guard, Fast), `running` (JSON boolean true/false, not the "
+        'string "true"), `version`, `limit`, `offset`, `fields`.\n\n'
         "Upstream: https://metrics.torproject.org/onionoo.html#details"
     ),
 )
