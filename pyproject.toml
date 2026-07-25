@@ -7,7 +7,15 @@ requires-python = ">=3.13"
 license = { file = "LICENSE" }
 dependencies = [
   "cachetools>=5.3",
-  "fastapi[standard]>=0.110",
+  # Upper bound is a compatibility hold, not a preference. FastAPI 0.137 stopped
+  # flattening `include_router` routes into `app.routes` and now keeps a private
+  # `_IncludedRouter` wrapper there instead. SlowAPI's `_find_route_handler` only
+  # scans the top level for objects with an `.endpoint`, so from 0.137 it resolves
+  # `None` for every `/v1/*` route, and `_should_exempt(None)` returns True. Rate
+  # limiting then silently passes every request through: it fails open, with no
+  # log line. Verified by bisection (0.136 fine, 0.137 broken) and guarded by
+  # tests/test_rate_limit.py. Lift once SlowAPI handles the nested router layout.
+  "fastapi[standard]>=0.110,<0.137",
   "fastapi-mcp>=0.4",
   "httpx>=0.27",
   "prometheus-fastapi-instrumentator>=7.0",
