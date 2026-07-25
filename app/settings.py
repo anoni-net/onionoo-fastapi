@@ -1,12 +1,16 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app import __version__
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", env_file=".env", extra="ignore")
 
     onionoo_base_url: str = "https://onionoo.torproject.org"
     onionoo_timeout_seconds: float = 30.0
-    user_agent: str = "onionoo-fastapi/0.1 (+https://github.com/anoni-net/onionoo-fastapi)"
+    user_agent: str = (
+        f"onionoo-fastapi/{__version__} (+https://github.com/anoni-net/onionoo-fastapi)"
+    )
     default_limit: int = 100
     # Onionoo has no server-side result cap; a single request can return the whole
     # corpus (~10k relays + ~2.5k bridges). Keep the ceiling high enough to retrieve

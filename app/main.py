@@ -12,6 +12,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app import __version__
 from app.observability import RequestIdMiddleware, configure_logging, logger
 from app.routers import aggregate, bandwidth, clients, details, summary, uptime, weights
 from app.services.onionoo_client import OnionooClient, UpstreamError
@@ -34,7 +35,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Onionoo FastAPI Proxy",
-        version="1.0.0",
+        version=__version__,
         description="Semantic/OpenAPI proxy for Tor Onionoo (data is fetched from Onionoo upstream).",
         lifespan=lifespan,
     )
