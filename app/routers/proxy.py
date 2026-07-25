@@ -27,7 +27,9 @@ async def proxy_get_json[ModelT: BaseModel](
 
     When `raw=True`, the upstream JSON is serialized directly without going through
     Pydantic validation. This is materially cheaper for large `/details` payloads
-    but loses the semantic field renaming applied by `/summary`.
+    but loses both the semantic field renaming applied by `/summary` and the `_meta`
+    block. Callers decide per route: `/details` also flips it on for a `fields=`
+    projection, since the trimmed objects cannot satisfy its response model.
     """
     if_modified_since = request.headers.get("if-modified-since")
     upstream = await client.get(method=method, params=params, if_modified_since=if_modified_since)

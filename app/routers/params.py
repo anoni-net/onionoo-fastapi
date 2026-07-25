@@ -22,7 +22,10 @@ def common_query_params(
     running: Annotated[
         bool | None,
         Query(
-            description="Return only running relays/bridges (true) or only non-running (false).",
+            description=(
+                "Return only running relays/bridges (true) or only non-running (false). "
+                'Pass a JSON boolean (true/false), not the string "true".'
+            ),
         ),
     ] = None,
     search: Annotated[
@@ -141,7 +144,15 @@ def common_query_params(
     ] = None,
     offset: Annotated[
         int | None,
-        Query(ge=0, description="Skip the given number of relays/bridges (relays first)."),
+        Query(
+            ge=0,
+            description=(
+                "Skip the given number of relays/bridges (relays first). Onionoo's default "
+                "ordering is not stable across requests, so paging with offset alone can skip "
+                "entries. Pass an explicit `order`, or fetch everything in one request with a "
+                "high `limit`, when you need the complete set."
+            ),
+        ),
     ] = None,
     limit: Annotated[
         int,
@@ -150,7 +161,9 @@ def common_query_params(
             le=settings.max_limit,
             description=(
                 f"Limit number of relays/bridges returned (relays first). "
-                f"Default: {settings.default_limit}, max: {settings.max_limit}."
+                f"Default: {settings.default_limit}, max: {settings.max_limit}. "
+                f"On `/details`, going past {settings.max_limit_untrimmed} requires a "
+                f"`fields=` projection to keep the payload bounded."
             ),
         ),
     ] = settings.default_limit,
@@ -214,9 +227,10 @@ def fields_query(
             description=(
                 "Comma-separated list of fields to include in the response. Useful "
                 "for trimming large payloads (e.g. `fields=nickname,fingerprint`). "
-                "On `/summary` and `/details` this filters top-level relay/bridge "
-                "attributes. On history endpoints (bandwidth/weights/clients/uptime) "
-                "Onionoo applies it where supported and otherwise ignores it."
+                "Onionoo only honours this on `/details`, where it filters top-level "
+                "relay/bridge attributes and the response is passed through as raw "
+                "upstream JSON. The other endpoints accept the parameter and ignore it, "
+                "so their response shape is unaffected."
             ),
         ),
     ] = None,
