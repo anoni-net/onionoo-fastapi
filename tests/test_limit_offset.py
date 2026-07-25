@@ -48,14 +48,16 @@ def test_limit_up_to_max_is_accepted_and_forwarded(
     app_client: TestClient, respx_mock: respx.MockRouter
 ) -> None:
     """Regression for issue #2 (2): a single request must be able to pull the whole
-    corpus. `limit=max_limit` is accepted (not 422) and forwarded to upstream, so
-    callers can avoid offset pagination entirely."""
+    corpus. `limit=max_limit` plus a projection is accepted (not 422) and forwarded to
+    upstream, so callers can avoid offset pagination entirely."""
     assert settings.max_limit >= 10000, "max_limit must allow one-shot full-corpus fetch"
     route = respx_mock.get("/details").mock(
         return_value=httpx.Response(200, json={"version": "9.0", "relays": [], "bridges": []})
     )
 
-    r = app_client.get("/v1/details", params={"limit": settings.max_limit})
+    r = app_client.get(
+        "/v1/details", params={"limit": settings.max_limit, "fields": "fingerprint,nickname"}
+    )
     assert r.status_code == 200, r.text
     assert route.calls.last.request.url.params["limit"] == str(settings.max_limit)
 
@@ -67,6 +69,31 @@ def test_limit_above_max_is_rejected(
     """limit past the ceiling is a 422 validation error, not a silent clamp."""
     r = app_client.get("/v1/details", params={"limit": settings.max_limit + 1})
     assert r.status_code == 422
+
+
+def test_high_limit_without_fields_is_rejected(
+    app_client: TestClient,
+    respx_mock: respx.MockRouter,  # noqa: ARG001
+) -> None:
+    """The full-corpus ceiling is only affordable with a projection: untrimmed /details
+    at limit=20000 is ~93 MB against live Onionoo, and the client caches the parsed body.
+    Without `fields=` the request is refused with an actionable message."""
+    r = app_client.get("/v1/details", params={"limit": settings.max_limit_untrimmed + 1})
+    assert r.status_code == 422
+    assert "fields=" in r.json()["detail"]
+
+
+def test_untrimmed_limit_at_the_ceiling_is_allowed(
+    app_client: TestClient, respx_mock: respx.MockRouter
+) -> None:
+    """The guard only kicks in past the ceiling, so existing untrimmed callers keep working."""
+    route = respx_mock.get("/details").mock(
+        return_value=httpx.Response(200, json={"version": "9.0", "relays": [], "bridges": []})
+    )
+
+    r = app_client.get("/v1/details", params={"limit": settings.max_limit_untrimmed})
+    assert r.status_code == 200, r.text
+    assert route.calls.last.request.url.params["limit"] == str(settings.max_limit_untrimmed)
 
 
 def test_semantic_keys_are_remapped(app_client: TestClient, respx_mock: respx.MockRouter) -> None:

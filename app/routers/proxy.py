@@ -27,17 +27,10 @@ async def proxy_get_json[ModelT: BaseModel](
 
     When `raw=True`, the upstream JSON is serialized directly without going through
     Pydantic validation. This is materially cheaper for large `/details` payloads
-    but loses the semantic field renaming applied by `/summary`.
-
-    A `fields=` projection forces the same raw passthrough: Onionoo returns only the
-    requested keys, so the trimmed relay/bridge objects can no longer satisfy the
-    full response model (which marks nickname/fingerprint/… as required). Validating
-    them would raise and surface as a 500. Passing the projection through verbatim is
-    both correct (the caller asked for exactly those fields) and cheap, matching what
-    `app.services.aggregate` already does internally.
+    but loses both the semantic field renaming applied by `/summary` and the `_meta`
+    block. Callers decide per route: `/details` also flips it on for a `fields=`
+    projection, since the trimmed objects cannot satisfy its response model.
     """
-    if params.get("fields"):
-        raw = True
     if_modified_since = request.headers.get("if-modified-since")
     upstream = await client.get(method=method, params=params, if_modified_since=if_modified_since)
 

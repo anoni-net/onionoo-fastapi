@@ -161,7 +161,9 @@ def common_query_params(
             le=settings.max_limit,
             description=(
                 f"Limit number of relays/bridges returned (relays first). "
-                f"Default: {settings.default_limit}, max: {settings.max_limit}."
+                f"Default: {settings.default_limit}, max: {settings.max_limit}. "
+                f"On `/details`, going past {settings.max_limit_untrimmed} requires a "
+                f"`fields=` projection to keep the payload bounded."
             ),
         ),
     ] = settings.default_limit,
@@ -225,9 +227,10 @@ def fields_query(
             description=(
                 "Comma-separated list of fields to include in the response. Useful "
                 "for trimming large payloads (e.g. `fields=nickname,fingerprint`). "
-                "On `/summary` and `/details` this filters top-level relay/bridge "
-                "attributes. On history endpoints (bandwidth/weights/clients/uptime) "
-                "Onionoo applies it where supported and otherwise ignores it."
+                "Onionoo only honours this on `/details`, where it filters top-level "
+                "relay/bridge attributes and the response is passed through as raw "
+                "upstream JSON. The other endpoints accept the parameter and ignore it, "
+                "so their response shape is unaffected."
             ),
         ),
     ] = None,
