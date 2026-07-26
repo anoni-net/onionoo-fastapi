@@ -163,9 +163,10 @@ Upstream / cache:
 - `ONIONOO_BASE_URL` (default: `https://onionoo.torproject.org`)
 - `ONIONOO_TIMEOUT_SECONDS` (default: `30`)
 - `DEFAULT_LIMIT` (default: `100`)
-- `MAX_LIMIT` (default: `200`)
+- `MAX_LIMIT` (default: `20000`) — high enough to pull the whole corpus in one call
+- `MAX_LIMIT_UNTRIMMED` (default: `200`) — above this, `/v1/details` requires a `fields=` projection and returns 422 without one. An untrimmed full-corpus details document is ~90 MB.
 - `USER_AGENT`
-- `CACHE_MAXSIZE` (default: `1024`)
+- `CACHE_MAXSIZE` (default: `128`)
 - `CACHE_DEFAULT_TTL_SECONDS` (default: `300`)
 - `UPSTREAM_RETRY_ATTEMPTS` (default: `2`)
 
@@ -210,9 +211,9 @@ A single-worker container (the default `uvicorn` CMD in the Dockerfile) measured
 | **Typical agent traffic** | ~90 MiB | After ~15 mixed `/v1/*` calls (details + aggregates), only a handful of distinct upstream payloads cached. |
 | **Cache near saturation** | ~180 MiB | After 200 distinct `/v1/details` queries with `fields=` projection; cache holds ~200 entries. |
 
-From these measurements, each cached entry costs **~0.5 MiB on average** when callers use the `fields=` projection. With the default `CACHE_MAXSIZE=1024` that yields a **~500 MiB upper bound** under realistic agent traffic.
+From these measurements, each cached entry costs **~0.5 MiB on average** when callers use the `fields=` projection. With the default `CACHE_MAXSIZE=128` that yields a **~64 MiB upper bound** under realistic agent traffic.
 
-If you expect callers to hit `/v1/details` **without** `fields=`, a single response can be several MiB (Onionoo returns ~10k full relay objects). A fully saturated cache of unfiltered details would then sit in the **1–5 GiB** range — bound it by tuning `CACHE_MAXSIZE` down.
+Entries hold the parsed upstream body, so a few large documents dominate the resident set. `MAX_LIMIT_UNTRIMMED` is what keeps any single entry small: it forces high-limit `/v1/details` callers into a `fields=` projection, so the multi-hundred-MiB caches that unfiltered full-corpus responses would produce stay out of reach. Raise `CACHE_MAXSIZE` only after checking the payload sizes your deployment actually sees.
 
 Suggested memory limits for `docker run --memory` / Kubernetes requests:
 
