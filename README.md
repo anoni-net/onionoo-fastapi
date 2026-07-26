@@ -174,10 +174,31 @@ Observability / production hardening:
 - `LOG_LEVEL` (default: `INFO`)
 - `LOG_FORMAT` (`json` or `console`, default `json`)
 - `METRICS_ENABLED` (default: `true`) — exposes `/metrics` in Prometheus format
-- `CORS_ALLOWED_ORIGINS` (default: empty, CORS disabled). Example: `["https://example.com"]`
+- `CORS_ALLOW_ORIGINS` — comma-separated allowlist of browser origins (default: `https://anoni.net,http://127.0.0.1:8000,http://localhost:8000`). Set it to an empty string to disable CORS. Details below.
 - `RATE_LIMIT_ENABLED` (default: `false`)
 - `RATE_LIMIT_PER_MINUTE` (default: `120`)
 - `HEALTHZ_READY_CACHE_SECONDS` (default: `30`)
+
+### CORS
+
+Browser front ends can call this service directly, which is what the relay globe on the docs site does when a reader asks it for fresh data. `CORS_ALLOW_ORIGINS` is a comma-separated allowlist:
+
+```bash
+CORS_ALLOW_ORIGINS="https://anoni.net,https://staging.example.com"
+CORS_ALLOW_ORIGINS=""   # no CORS headers at all
+```
+
+The allowlist is enumerated rather than set to `*` because widening it later is easier than narrowing it. Everything served here is public read-only Onionoo data, so the list is about who gets to spend this instance's upstream request budget.
+
+What the middleware sends:
+
+- `Access-Control-Allow-Origin` mirrors the request origin when it is on the list, and is absent otherwise.
+- `Access-Control-Allow-Methods: GET, OPTIONS`. Every route is read-only.
+- `Access-Control-Allow-Credentials` is never sent. No route reads cookies or `Authorization`, so browsers should not attach ambient credentials to these calls.
+- `Access-Control-Expose-Headers: X-Request-ID, Last-Modified`, so JavaScript can read the correlation id and the upstream publish time.
+- `Vary: Origin` on **every** response. Starlette's CORSMiddleware only adds it on the branch where an allowed origin was present, which means a response fetched without an `Origin` header (a crawler, an uptime check, a curl) is cacheable under the same key as a browser fetch. Behind a shared cache such as Cloudflare that lets a stored copy with no `Access-Control-Allow-Origin` be replayed to a browser, where it fails. `VaryOriginMiddleware` fills the header in whenever CORS leaves it out.
+
+Serving the docs site over its onion mirror produces a different origin (`http://docs<...>.onion`), which is not in the default list. Add it explicitly if the live-refresh button needs to work for Tor Browser readers on the onion address.
 
 ### Resource sizing
 

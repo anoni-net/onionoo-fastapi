@@ -1,4 +1,7 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Annotated
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app import __version__
 
@@ -32,13 +35,38 @@ class Settings(BaseSettings):
     cache_default_ttl_seconds: float = 300.0
     upstream_retry_attempts: int = 2
 
-    cors_allowed_origins: list[str] = []
+    # Comma-separated, matching pulse/backend's CORS_ALLOW_ORIGINS so both services
+    # are configured the same way. The default covers the docs site plus the two
+    # addresses `mkdocs serve` binds to, so browser-side fetches (the relay globe's
+    # live-refresh button) work in production and against a local docs checkout.
+    # Everything here is public read-only Onionoo data, so the allowlist limits who
+    # can spend our upstream budget rather than protecting anything secret. Set
+    # CORS_ALLOW_ORIGINS="" to switch CORS off entirely.
+    cors_allow_origins: Annotated[list[str], NoDecode] = [
+        "https://anoni.net",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ]
     rate_limit_enabled: bool = False
     rate_limit_per_minute: int = 120
     log_level: str = "INFO"
     log_format: str = "json"
     metrics_enabled: bool = True
     healthz_ready_cache_seconds: float = 30.0
+
+    @field_validator("cors_allow_origins", mode="before")
+    @classmethod
+    def _split_comma_separated(cls, value: object) -> object:
+        """Accept `a,b` from the environment as well as a real list.
+
+        `NoDecode` above is what makes this reachable: for a `list[str]` field
+        pydantic-settings otherwise runs `json.loads` on the raw environment
+        value first, and a bare `https://anoni.net` raises there before any
+        validator gets to see it.
+        """
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
 
 settings = Settings()
