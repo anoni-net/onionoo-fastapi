@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from time import monotonic
 
@@ -13,6 +14,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app import __version__
+from app.middleware import VaryOriginMiddleware
 from app.observability import RequestIdMiddleware, configure_logging, logger
 from app.routers import aggregate, bandwidth, clients, details, summary, uptime, weights
 from app.services.onionoo_client import OnionooClient, UpstreamError
@@ -22,11 +24,29 @@ from app.settings import settings
 def create_app() -> FastAPI:
     configure_logging()
 
+    # The 1.0.0 spelling still works via an alias on the field. Say so out loud:
+    # silently honoring it would leave a self-hoster with no idea their config sits
+    # on a name that is going away.
+    if "CORS_ALLOWED_ORIGINS" in os.environ and "CORS_ALLOW_ORIGINS" not in os.environ:
+        logger.warning(
+            "settings.deprecated_env_var",
+            deprecated="CORS_ALLOWED_ORIGINS",
+            replacement="CORS_ALLOW_ORIGINS",
+            detail="value is still honored, the old name goes away in a future release",
+        )
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.onionoo = OnionooClient()
         app.state.ready_cache = {"checked_at": 0.0, "ok": False, "detail": ""}
-        logger.info("app.startup", base_url=settings.onionoo_base_url)
+        # Log the effective allowlist: a browser-side CORS failure looks identical
+        # whether the origin is missing from it or the service is simply down, so
+        # having the list in the startup line saves a round of guessing.
+        logger.info(
+            "app.startup",
+            base_url=settings.onionoo_base_url,
+            cors_allow_origins=settings.cors_allow_origins or None,
+        )
         try:
             yield
         finally:
@@ -40,18 +60,25 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Order matters: request-id should wrap everything; CORS before GZip.
+    # `add_middleware` prepends, so the last call here is the outermost layer and
+    # the first call is the innermost. Vary-origin therefore goes last: it runs
+    # after CORSMiddleware on the way out and can see whether CORS set the header.
     app.add_middleware(RequestIdMiddleware)
-    if settings.cors_allowed_origins:
+    if settings.cors_allow_origins:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.cors_allowed_origins,
+            allow_origins=settings.cors_allow_origins,
+            # Read-only proxy, so GET covers every route and OPTIONS covers preflight.
             allow_methods=["GET", "OPTIONS"],
             allow_headers=["*"],
             expose_headers=["X-Request-ID", "Last-Modified"],
+            # No cookies and no Authorization on any route. Keeping this off means a
+            # browser will never attach ambient credentials to a cross-origin call
+            # here, and it leaves the door open to widening the allowlist later.
             allow_credentials=False,
         )
     app.add_middleware(GZipMiddleware, minimum_size=1000)
+    app.add_middleware(VaryOriginMiddleware)
 
     # The limiter is always constructed so `@limiter.exempt` decorators on the
     # health endpoints remain valid even when rate limiting is toggled off.

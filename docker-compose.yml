@@ -9,6 +9,13 @@ services:
       LOG_FORMAT: "${LOG_FORMAT:-json}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
       METRICS_ENABLED: "${METRICS_ENABLED:-true}"
+      # Comma-separated allowlist for browser-side callers. Deliberately left with
+      # no value: Compose then passes it through only when the host environment
+      # sets it, and the app default (the docs site plus localhost) applies
+      # otherwise. Writing "${CORS_ALLOW_ORIGINS:-...}" instead would make
+      # CORS_ALLOW_ORIGINS="" fall back to the default, so there would be no way
+      # to switch CORS off from the environment.
+      CORS_ALLOW_ORIGINS:
       RATE_LIMIT_ENABLED: "${RATE_LIMIT_ENABLED:-false}"
       RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-120}"
     restart: unless-stopped

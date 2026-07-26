@@ -163,9 +163,10 @@ Upstream / cache:
 - `ONIONOO_BASE_URL` (default: `https://onionoo.torproject.org`)
 - `ONIONOO_TIMEOUT_SECONDS` (default: `30`)
 - `DEFAULT_LIMIT` (default: `100`)
-- `MAX_LIMIT` (default: `200`)
+- `MAX_LIMIT` (default: `20000`) — high enough to pull the whole corpus in one call
+- `MAX_LIMIT_UNTRIMMED` (default: `200`) — above this, `/v1/details` requires a `fields=` projection and returns 422 without one. An untrimmed full-corpus details document is ~90 MB.
 - `USER_AGENT`
-- `CACHE_MAXSIZE` (default: `1024`)
+- `CACHE_MAXSIZE` (default: `128`)
 - `CACHE_DEFAULT_TTL_SECONDS` (default: `300`)
 - `UPSTREAM_RETRY_ATTEMPTS` (default: `2`)
 
@@ -174,10 +175,43 @@ Observability / production hardening:
 - `LOG_LEVEL` (default: `INFO`)
 - `LOG_FORMAT` (`json` or `console`, default `json`)
 - `METRICS_ENABLED` (default: `true`) — exposes `/metrics` in Prometheus format
-- `CORS_ALLOWED_ORIGINS` (default: empty, CORS disabled). Example: `["https://example.com"]`
+- `CORS_ALLOW_ORIGINS` — comma-separated allowlist of browser origins. Set it to an empty string to disable CORS. Defaults and behavior below. (Renamed in 1.2.0; the old `CORS_ALLOWED_ORIGINS` still works and logs a deprecation warning.)
 - `RATE_LIMIT_ENABLED` (default: `false`)
 - `RATE_LIMIT_PER_MINUTE` (default: `120`)
 - `HEALTHZ_READY_CACHE_SECONDS` (default: `30`)
+
+### CORS
+
+Browser front ends can call this service directly, which is what the relay globe on the docs site does when a reader asks it for fresh data. `CORS_ALLOW_ORIGINS` is a comma-separated allowlist:
+
+```bash
+CORS_ALLOW_ORIGINS="https://anoni.net,https://staging.example.com"
+CORS_ALLOW_ORIGINS=""   # no CORS headers at all
+```
+
+The allowlist is enumerated rather than set to `*` because widening it later is easier than narrowing it. Everything served here is public read-only Onionoo data, so the list is about who gets to spend this instance's upstream request budget.
+
+The default covers where the docs site is served from, plus the two addresses `mkdocs serve` binds to:
+
+| Origin | What it is |
+|---|---|
+| `https://anoni.net` | docs site on clearnet. The docs live under a path (`/docs/`), so the origin is the bare apex. |
+| `http://docs.anoninetru5tflukgfaehun7q6khowgmymcff3gtk5oyesqazhmfxtyd.onion` | docs site on the onion mirror. Plain `http` is normal for an onion service. |
+| `http://127.0.0.1:8000`, `http://localhost:8000` | local `mkdocs serve`. Browsers treat the two spellings as different origins, so both are listed. |
+
+The clearnet and onion entries are not symmetric on purpose: clearnet is path-based under the apex, while the onion mirror is a subdomain of the onion key and therefore a separate origin. **If you self-host, replace this list with your own origins.** The default names our sites because that is what the hosted instance serves.
+
+A reader on the onion mirror who triggers a live refresh makes a **clearnet** request to `onionoo.anoni.net`, which leaves the Tor network through an exit node. Tor still hides their address from us, but the request is not onion-to-onion.
+
+What the middleware sends:
+
+- `Access-Control-Allow-Origin` mirrors the request origin when it is on the list, and is absent otherwise.
+- `Access-Control-Allow-Methods: GET, OPTIONS`. Every route is read-only.
+- `Access-Control-Allow-Credentials` is never sent. No route reads cookies or `Authorization`, so browsers should not attach ambient credentials to these calls.
+- `Access-Control-Expose-Headers: X-Request-ID, Last-Modified`, so JavaScript can read the correlation id and the upstream publish time.
+- `Vary: Origin` on **every** response. Starlette's CORSMiddleware only adds it on the branch where an allowed origin was present, which means a response fetched without an `Origin` header (a crawler, an uptime check, a curl) is cacheable under the same key as a browser fetch. Behind a shared cache such as Cloudflare that lets a stored copy with no `Access-Control-Allow-Origin` be replayed to a browser, where it fails. `VaryOriginMiddleware` fills the header in whenever CORS leaves it out.
+
+The `CORS_ALLOWED_ORIGINS` name from 1.0.0 is still accepted so upgrading does not silently drop a self-hosted allowlist. `Settings` ignores unknown environment variables, so without the alias the old name would be swallowed without a word and the only symptom would be a browser-side CORS failure with nothing in the service log. Startup logs a deprecation warning when the old name is what supplied the value.
 
 ### Resource sizing
 
@@ -189,9 +223,9 @@ A single-worker container (the default `uvicorn` CMD in the Dockerfile) measured
 | **Typical agent traffic** | ~90 MiB | After ~15 mixed `/v1/*` calls (details + aggregates), only a handful of distinct upstream payloads cached. |
 | **Cache near saturation** | ~180 MiB | After 200 distinct `/v1/details` queries with `fields=` projection; cache holds ~200 entries. |
 
-From these measurements, each cached entry costs **~0.5 MiB on average** when callers use the `fields=` projection. With the default `CACHE_MAXSIZE=1024` that yields a **~500 MiB upper bound** under realistic agent traffic.
+From these measurements, each cached entry costs **~0.5 MiB on average** when callers use the `fields=` projection. With the default `CACHE_MAXSIZE=128` that yields a **~64 MiB upper bound** under realistic agent traffic.
 
-If you expect callers to hit `/v1/details` **without** `fields=`, a single response can be several MiB (Onionoo returns ~10k full relay objects). A fully saturated cache of unfiltered details would then sit in the **1–5 GiB** range — bound it by tuning `CACHE_MAXSIZE` down.
+Entries hold the parsed upstream body, so a few large documents dominate the resident set. `MAX_LIMIT_UNTRIMMED` is what keeps any single entry small: it forces high-limit `/v1/details` callers into a `fields=` projection, so the multi-hundred-MiB caches that unfiltered full-corpus responses would produce stay out of reach. Raise `CACHE_MAXSIZE` only after checking the payload sizes your deployment actually sees.
 
 Suggested memory limits for `docker run --memory` / Kubernetes requests:
 
