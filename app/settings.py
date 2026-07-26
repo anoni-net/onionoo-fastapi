@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app import __version__
@@ -36,17 +36,31 @@ class Settings(BaseSettings):
     upstream_retry_attempts: int = 2
 
     # Comma-separated, matching pulse/backend's CORS_ALLOW_ORIGINS so both services
-    # are configured the same way. The default covers the docs site plus the two
-    # addresses `mkdocs serve` binds to, so browser-side fetches (the relay globe's
-    # live-refresh button) work in production and against a local docs checkout.
-    # Everything here is public read-only Onionoo data, so the allowlist limits who
-    # can spend our upstream budget rather than protecting anything secret. Set
-    # CORS_ALLOW_ORIGINS="" to switch CORS off entirely.
-    cors_allow_origins: Annotated[list[str], NoDecode] = [
-        "https://anoni.net",
-        "http://127.0.0.1:8000",
-        "http://localhost:8000",
-    ]
+    # are configured the same way. Everything here is public read-only Onionoo data,
+    # so the allowlist limits who can spend our upstream budget rather than
+    # protecting anything secret. Set CORS_ALLOW_ORIGINS="" to switch CORS off.
+    #
+    # The default covers where the docs site is actually served from. Note the two
+    # spellings are not symmetric: on clearnet the docs live under a path
+    # (https://anoni.net/docs/), so the origin is the bare apex, while the onion
+    # mirror is a subdomain of the same onion key, which is its own origin. The last
+    # two entries are what `mkdocs serve` binds to, so a local docs checkout works
+    # without extra configuration.
+    #
+    # CORS_ALLOWED_ORIGINS is the 1.0.0 name, still accepted so that upgrading does
+    # not silently drop a self-hosted allowlist: `extra="ignore"` above would swallow
+    # the old name without a word, and the only symptom would be a browser-side CORS
+    # failure with nothing in our logs. `create_app` logs a deprecation line when the
+    # old name is the one supplying the value.
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(
+        default=[
+            "https://anoni.net",
+            "http://docs.anoninetru5tflukgfaehun7q6khowgmymcff3gtk5oyesqazhmfxtyd.onion",
+            "http://127.0.0.1:8000",
+            "http://localhost:8000",
+        ],
+        validation_alias=AliasChoices("CORS_ALLOW_ORIGINS", "CORS_ALLOWED_ORIGINS"),
+    )
     rate_limit_enabled: bool = False
     rate_limit_per_minute: int = 120
     log_level: str = "INFO"

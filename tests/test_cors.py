@@ -90,10 +90,58 @@ def _header_names(response: httpx.Response) -> set[str]:
 
 
 def test_default_allowlist_covers_docs_site_and_local_mkdocs() -> None:
-    """A fresh deploy must serve the docs site without extra configuration, and a
-    docs checkout must work against `mkdocs serve` on either loopback spelling."""
-    defaults = Settings.model_fields["cors_allow_origins"].default
-    assert defaults == ["https://anoni.net", "http://127.0.0.1:8000", "http://localhost:8000"]
+    """A fresh deploy must serve the docs site without extra configuration, and a docs
+    checkout must work against `mkdocs serve` on either loopback spelling.
+
+    The clearnet and onion spellings are deliberately asymmetric. Clearnet docs are a
+    path under the apex (https://anoni.net/docs/), so the origin is the bare apex, and
+    `docs.anoni.net` does not exist. The onion mirror is a subdomain of the onion key,
+    which is a separate origin and has to be listed on its own.
+    """
+    assert Settings.model_fields["cors_allow_origins"].default == [
+        "https://anoni.net",
+        "http://docs.anoninetru5tflukgfaehun7q6khowgmymcff3gtk5oyesqazhmfxtyd.onion",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ]
+
+
+def test_onion_mirror_origin_is_allowed(
+    monkeypatch: pytest.MonkeyPatch, respx_mock: respx.MockRouter
+) -> None:
+    """Readers on the onion mirror are a big part of who this site is for, and Tor
+    Browser sends the onion host as the origin. Its scheme is plain http, which is
+    normal for an onion service, so the allowlist has to carry it verbatim."""
+    onion = "http://docs.anoninetru5tflukgfaehun7q6khowgmymcff3gtk5oyesqazhmfxtyd.onion"
+    monkeypatch.setattr(
+        settings, "cors_allow_origins", Settings.model_fields["cors_allow_origins"].default
+    )
+    respx_mock.get("/summary").mock(return_value=httpx.Response(200, json=make_summary_envelope()))
+    with TestClient(create_app()) as client:
+        r = client.get("/v1/summary", params={"limit": 1}, headers={"Origin": onion})
+        assert r.status_code == 200
+        assert r.headers["access-control-allow-origin"] == onion
+
+        preflight = client.options(
+            "/v1/details",
+            headers={"Origin": onion, "Access-Control-Request-Method": "GET"},
+        )
+        assert preflight.status_code in (200, 204)
+        assert preflight.headers["access-control-allow-origin"] == onion
+
+
+def test_legacy_env_var_name_is_still_honored(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`CORS_ALLOWED_ORIGINS` was the 1.0.0 name. `extra="ignore"` would swallow it
+    without a word, so a self-hoster upgrading would lose their allowlist and see only
+    a browser-side CORS failure. Keep it working, and warn from `create_app`."""
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://legacy.example")
+    assert Settings(_env_file=None).cors_allow_origins == ["https://legacy.example"]
+
+
+def test_new_env_var_name_wins_when_both_are_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CORS_ALLOWED_ORIGINS", "https://legacy.example")
+    monkeypatch.setenv("CORS_ALLOW_ORIGINS", "https://current.example")
+    assert Settings(_env_file=None).cors_allow_origins == ["https://current.example"]
 
 
 def test_origins_parse_from_a_comma_separated_env_var(

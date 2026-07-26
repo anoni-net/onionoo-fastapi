@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from time import monotonic
 
@@ -22,6 +23,17 @@ from app.settings import settings
 
 def create_app() -> FastAPI:
     configure_logging()
+
+    # The 1.0.0 spelling still works via an alias on the field. Say so out loud:
+    # silently honoring it would leave a self-hoster with no idea their config sits
+    # on a name that is going away.
+    if "CORS_ALLOWED_ORIGINS" in os.environ and "CORS_ALLOW_ORIGINS" not in os.environ:
+        logger.warning(
+            "settings.deprecated_env_var",
+            deprecated="CORS_ALLOWED_ORIGINS",
+            replacement="CORS_ALLOW_ORIGINS",
+            detail="value is still honored, the old name goes away in a future release",
+        )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
