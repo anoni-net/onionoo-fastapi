@@ -2,6 +2,8 @@
 
 FastAPI-based **semantic/OpenAPI proxy** for the Tor **Onionoo** API.
 
+This is the service behind the anoni.net community's [Tor relay lookup for AI assistants](https://anoni.net/en/projects/onionoo-mcp/) (onionoo MCP; 正體中文：[AI 助理的 Tor 節點查詢](https://anoni.net/projects/onionoo-mcp/)), which lets journalists and civil-society groups ask an AI assistant about Tor relays in plain language. onionoo MCP is the code name; readers know it by those names.
+
 - GitHub: <https://github.com/anoni-net/onionoo-fastapi>
 - Upstream data source: <https://onionoo.torproject.org>
 - This service **does not store Onionoo data**, it only forwards requests and transforms responses.
