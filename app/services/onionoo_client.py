@@ -230,7 +230,7 @@ class OnionooClient:
     ) -> UpstreamResponse:
         retrying = AsyncRetrying(
             stop=stop_after_attempt(settings.upstream_retry_attempts + 1),
-            wait=wait_exponential_jitter(initial=0.2, max=2.0),
+            wait=wait_exponential_jitter(multiplier=0.2, max=2.0),
             retry=retry_if_exception(_is_retryable_exception),
             reraise=True,
         )

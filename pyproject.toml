@@ -18,11 +18,20 @@ dependencies = [
   "fastapi[standard]>=0.110,<0.137",
   "fastapi-mcp>=0.4",
   "httpx>=0.27",
+  # Declared directly (it used to arrive only through fastapi-mcp) so both bounds
+  # are ours. Floor: 1.30.0 fixes CVE-2026-59951, where stateful Streamable HTTP
+  # sessions were never reclaimed or expired; the hosted /mcp runs in that mode.
+  # Ceiling: mcp 2 renamed FastMCP to MCPServer (app/mcp_stdio.py imports
+  # mcp.server.fastmcp) and dropped mcp.types, which fastapi-mcp 0.4 imports, so
+  # an unbounded upgrade breaks both transports. Moving to 2.x means replacing
+  # fastapi-mcp, a separate piece of work.
+  "mcp>=1.30,<2",
   "prometheus-fastapi-instrumentator>=7.0",
   "pydantic-settings>=2.2",
   "slowapi>=0.1.9",
   "structlog>=24.1",
-  "tenacity>=8.3",
+  # 9.2 renamed wait_exponential_jitter(initial=) to multiplier=; app/services/onionoo_client.py uses the new name.
+  "tenacity>=9.2",
   "uvicorn[standard]>=0.27",
 ]
 
