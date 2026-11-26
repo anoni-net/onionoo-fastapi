@@ -8,12 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from fastapi_mcp import FastApiMCP
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app import __version__
+from app.mcp_http import CountingFastApiMCP
 from app.middleware import VaryOriginMiddleware
 from app.observability import RequestIdMiddleware, configure_logging, logger
 from app.routers import aggregate, bandwidth, clients, details, summary, uptime, weights
@@ -161,7 +161,7 @@ def create_app() -> FastAPI:
     app.include_router(uptime.router, prefix="/v1", tags=["onionoo"])
     app.include_router(aggregate.router, prefix="/v1", tags=["aggregate"])
 
-    mcp = FastApiMCP(
+    mcp = CountingFastApiMCP(
         app,
         name="Onionoo MCP",
         description=(

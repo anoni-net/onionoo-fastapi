@@ -255,6 +255,7 @@ Every request is assigned an `X-Request-ID`. Clients may supply one to correlate
 - `onionoo_cache_hits_total`, `onionoo_cache_misses_total`
 - `onionoo_upstream_seconds{method=...}` (histogram)
 - `onionoo_upstream_errors_total{method=..., status=...}`
+- `onionoo_mcp_tool_calls_total{tool=..., outcome="ok"|"error"}` — tool calls on the Streamable HTTP `/mcp` endpoint. Tool calls reach `/v1/*` through an in-process client, so the request metrics alone count them as REST traffic; this counter is how you tell the two apart. It records the tool name and the outcome only: no arguments, session ids, client names or addresses. Names outside the advertised tool list are counted as `tool="unknown"`. The stdio server runs on the user's own machine and is not counted.
 - Standard `http_request_duration_seconds` from the FastAPI instrumentator
 
 ### Raw passthrough
