@@ -104,6 +104,17 @@ UPSTREAM_ERRORS = Counter(
     "Upstream request errors grouped by HTTP status (or 'network').",
     labelnames=("method", "status"),
 )
+# Tool calls on the Streamable HTTP /mcp endpoint. Labels are deliberately
+# limited to the tool name and the outcome: no arguments, no session id, no
+# client name or address. Tool calls reach /v1/* through an in-process client,
+# so http_request_duration_seconds alone cannot tell them apart from direct
+# REST callers. Names outside the advertised tool list collapse to "unknown"
+# so a client cannot grow the label set.
+MCP_TOOL_CALLS = Counter(
+    "onionoo_mcp_tool_calls_total",
+    "Tool calls on the Streamable HTTP /mcp endpoint, by tool and outcome (ok or error).",
+    labelnames=("tool", "outcome"),
+)
 
 
 # --- Middleware -------------------------------------------------------------
